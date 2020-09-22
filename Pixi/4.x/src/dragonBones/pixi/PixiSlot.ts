@@ -148,7 +148,9 @@ namespace dragonBones {
         }
 
         protected _updateColor(): void {
-            this._renderDisplay.alpha = this._colorTransform.alphaMultiplier;
+            const alpha = this._colorTransform.alphaMultiplier * this._globalAlpha;
+            this._renderDisplay.alpha = alpha;
+
             if (this._renderDisplay instanceof PIXI.Sprite || this._renderDisplay instanceof PIXI.mesh.Mesh) {
                 const color = (Math.round(this._colorTransform.redMultiplier * 0xFF) << 16) + (Math.round(this._colorTransform.greenMultiplier * 0xFF) << 8) + Math.round(this._colorTransform.blueMultiplier * 0xFF);
                 this._renderDisplay.tint = color;
@@ -157,12 +159,12 @@ namespace dragonBones {
         }
 
         protected _updateFrame(): void {
-            const currentVerticesData = (this._deformVertices !== null && this._display === this._meshDisplay) ? this._deformVertices.verticesData : null;
             let currentTextureData = this._textureData as (PixiTextureData | null);
 
             if (this._displayIndex >= 0 && this._display !== null && currentTextureData !== null) {
                 let currentTextureAtlasData = currentTextureData.parent as PixiTextureAtlasData;
-                if (this._armature.replacedTexture !== null && this._rawDisplayDatas !== null && this._rawDisplayDatas.indexOf(this._displayData) >= 0) { // Update replaced texture atlas.
+
+                if (this._armature.replacedTexture !== null) { // Update replaced texture atlas.
                     if (this._armature._replaceTextureAtlasData === null) {
                         currentTextureAtlasData = BaseObject.borrowObject(PixiTextureAtlasData);
                         currentTextureAtlasData.copyFrom(currentTextureData.parent);
@@ -178,13 +180,13 @@ namespace dragonBones {
 
                 const renderTexture = currentTextureData.renderTexture;
                 if (renderTexture !== null) {
-                    if (currentVerticesData !== null) { // Mesh.
-                        const data = currentVerticesData.data;
+                    if (this._geometryData !== null) { // Mesh.
+                        const data = this._geometryData.data;
                         const intArray = data.intArray;
                         const floatArray = data.floatArray;
-                        const vertexCount = intArray[currentVerticesData.offset + BinaryOffset.MeshVertexCount];
-                        const triangleCount = intArray[currentVerticesData.offset + BinaryOffset.MeshTriangleCount];
-                        let vertexOffset = intArray[currentVerticesData.offset + BinaryOffset.MeshFloatOffset];
+                        const vertexCount = intArray[this._geometryData.offset + BinaryOffset.GeometryVertexCount];
+                        const triangleCount = intArray[this._geometryData.offset + BinaryOffset.GeometryTriangleCount];
+                        let vertexOffset = intArray[this._geometryData.offset + BinaryOffset.GeometryFloatOffset];
 
                         if (vertexOffset < 0) {
                             vertexOffset += 65536; // Fixed out of bouds bug. 
@@ -194,31 +196,32 @@ namespace dragonBones {
                         const scale = this._armature._armatureData.scale;
 
                         const meshDisplay = this._renderDisplay as PIXI.mesh.Mesh;
-                        const textureAtlasWidth = currentTextureAtlasData.width > 0.0 ? currentTextureAtlasData.width : renderTexture.width;
-                        const textureAtlasHeight = currentTextureAtlasData.height > 0.0 ? currentTextureAtlasData.height : renderTexture.height;
+                        const textureAtlasWidth = currentTextureAtlasData.width > 0.0 ? currentTextureAtlasData.width : renderTexture.baseTexture.width;
+                        const textureAtlasHeight = currentTextureAtlasData.height > 0.0 ? currentTextureAtlasData.height : renderTexture.baseTexture.height;
+                        const region = currentTextureData.region;
 
                         meshDisplay.vertices = new Float32Array(vertexCount * 2) as any;
                         meshDisplay.uvs = new Float32Array(vertexCount * 2) as any;
                         meshDisplay.indices = new Uint16Array(triangleCount * 3) as any;
                         for (let i = 0, l = vertexCount * 2; i < l; ++i) {
                             meshDisplay.vertices[i] = floatArray[vertexOffset + i] * scale;
-                            meshDisplay.uvs[i] = floatArray[uvOffset + i];
                         }
 
                         for (let i = 0; i < triangleCount * 3; ++i) {
-                            meshDisplay.indices[i] = intArray[currentVerticesData.offset + BinaryOffset.MeshVertexIndices + i];
+                            meshDisplay.indices[i] = intArray[this._geometryData.offset + BinaryOffset.GeometryVertexIndices + i];
                         }
 
-                        for (let i = 0, l = meshDisplay.uvs.length; i < l; i += 2) {
-                            const u = meshDisplay.uvs[i];
-                            const v = meshDisplay.uvs[i + 1];
+                        for (let i = 0, l = vertexCount * 2; i < l; i += 2) {
+                            const u = floatArray[uvOffset + i];
+                            const v = floatArray[uvOffset + i + 1];
+
                             if (currentTextureData.rotated) {
-                                meshDisplay.uvs[i] = (currentTextureData.region.x + (1.0 - v) * currentTextureData.region.width) / textureAtlasWidth;
-                                meshDisplay.uvs[i + 1] = (currentTextureData.region.y + u * currentTextureData.region.height) / textureAtlasHeight;
+                                meshDisplay.uvs[i] = (region.x + (1.0 - v) * region.width) / textureAtlasWidth;
+                                meshDisplay.uvs[i + 1] = (region.y + u * region.height) / textureAtlasHeight;
                             }
                             else {
-                                meshDisplay.uvs[i] = (currentTextureData.region.x + u * currentTextureData.region.width) / textureAtlasWidth;
-                                meshDisplay.uvs[i + 1] = (currentTextureData.region.y + v * currentTextureData.region.height) / textureAtlasHeight;
+                                meshDisplay.uvs[i] = (region.x + u * region.width) / textureAtlasWidth;
+                                meshDisplay.uvs[i + 1] = (region.y + v * region.height) / textureAtlasHeight;
                             }
                         }
 
@@ -226,6 +229,12 @@ namespace dragonBones {
                         meshDisplay.texture = renderTexture as any;
                         meshDisplay.dirty++;
                         meshDisplay.indexDirty++;
+
+                        const isSkinned = this._geometryData.weight !== null;
+                        const isSurface = this._parent._boneData.type !== BoneType.Bone;
+                        if (isSkinned || isSurface) {
+                            this._identityTransform();
+                        }
                     }
                     else { // Normal texture.
                         this._textureScale = currentTextureData.parent.scale * this._armature._armatureData.scale;
@@ -239,7 +248,7 @@ namespace dragonBones {
                 }
             }
 
-            if (currentVerticesData !== null) {
+            if (this._geometryData !== null) {
                 const meshDisplay = this._renderDisplay as PIXI.mesh.Mesh;
                 meshDisplay.texture = null as any;
                 meshDisplay.x = 0.0;
@@ -257,19 +266,19 @@ namespace dragonBones {
 
         protected _updateMesh(): void {
             const scale = this._armature._armatureData.scale;
-            const deformVertices = (this._deformVertices as DeformVertices).vertices;
-            const bones = (this._deformVertices as DeformVertices).bones;
-            const verticesData = (this._deformVertices as DeformVertices).verticesData as VerticesData;
-            const weightData = verticesData.weight;
+            const deformVertices = (this._displayFrame as DisplayFrame).deformVertices;
+            const bones = this._geometryBones;
+            const geometryData = this._geometryData as GeometryData;
+            const weightData = geometryData.weight;
 
-            const hasDeform = deformVertices.length > 0 && verticesData.inheritDeform;
+            const hasDeform = deformVertices.length > 0 && geometryData.inheritDeform;
             const meshDisplay = this._renderDisplay as PIXI.mesh.Mesh;
 
             if (weightData !== null) {
-                const data = verticesData.data;
+                const data = geometryData.data;
                 const intArray = data.intArray;
                 const floatArray = data.floatArray;
-                const vertexCount = intArray[verticesData.offset + BinaryOffset.MeshVertexCount];
+                const vertexCount = intArray[geometryData.offset + BinaryOffset.GeometryVertexCount];
                 let weightFloatOffset = intArray[weightData.offset + BinaryOffset.WeigthFloatOffset];
 
                 if (weightFloatOffset < 0) {
@@ -308,21 +317,26 @@ namespace dragonBones {
                     meshDisplay.vertices[iD++] = yG;
                 }
             }
-            else if (hasDeform) {
+            else {
                 const isSurface = this._parent._boneData.type !== BoneType.Bone;
-                const data = verticesData.data;
+                const data = geometryData.data;
                 const intArray = data.intArray;
                 const floatArray = data.floatArray;
-                const vertexCount = intArray[verticesData.offset + BinaryOffset.MeshVertexCount];
-                let vertexOffset = intArray[verticesData.offset + BinaryOffset.MeshFloatOffset];
+                const vertexCount = intArray[geometryData.offset + BinaryOffset.GeometryVertexCount];
+                let vertexOffset = intArray[geometryData.offset + BinaryOffset.GeometryFloatOffset];
 
                 if (vertexOffset < 0) {
                     vertexOffset += 65536; // Fixed out of bouds bug. 
                 }
 
                 for (let i = 0, l = vertexCount * 2; i < l; i += 2) {
-                    const x = floatArray[vertexOffset + i] * scale + deformVertices[i];
-                    const y = floatArray[vertexOffset + i + 1] * scale + deformVertices[i + 1];
+                    let x = floatArray[vertexOffset + i] * scale;
+                    let y = floatArray[vertexOffset + i + 1] * scale;
+
+                    if (hasDeform) {
+                        x += deformVertices[i];
+                        y += deformVertices[i + 1];
+                    }
 
                     if (isSurface) {
                         const matrix = (this._parent as Surface)._getGlobalTransformMatrix(x, y);
@@ -335,12 +349,6 @@ namespace dragonBones {
                     }
                 }
             }
-        }
-        /**
-         * @internal
-         */
-        public _updateGlueMesh(): void {
-            // TODO
         }
 
         protected _updateTransform(): void {

@@ -3,6 +3,7 @@
 		"watch": false,
 		"sourceMap": false,
 		"declaration": true,
+        "stripInternal": true,
 		"alwaysStrict": true,
 		"noImplicitAny": true,
 		"noImplicitThis": true,
@@ -25,7 +26,6 @@
 	],
 	"files": [
 		"./libs/egret.d.ts",
-		"../../DragonBones/src/dragonBones/modules.ts",
 		
 		"../../DragonBones/src/dragonBones/core/DragonBones.ts",
 		"../../DragonBones/src/dragonBones/core/BaseObject.ts",
@@ -47,8 +47,6 @@
 		"../../DragonBones/src/dragonBones/model/AnimationData.ts",
 		"../../DragonBones/src/dragonBones/model/AnimationConfig.ts",
 		"../../DragonBones/src/dragonBones/model/TextureAtlasData.ts",
-
-		"../../DragonBones/src/dragonBones/armature/DeformVertices.ts",
 
 		"../../DragonBones/src/dragonBones/armature/IArmatureProxy.ts",
 		"../../DragonBones/src/dragonBones/armature/Armature.ts",
@@ -77,7 +75,6 @@
 		"./src/dragonBones/egret/EgretTextureAtlasData.ts",
 		"./src/dragonBones/egret/EgretArmatureDisplay.ts",
 		"./src/dragonBones/egret/EgretSlot.ts",
-		"./src/dragonBones/egret/EgretFactory.ts",
-		"./src/dragonBones/egret/Movie.ts"
+		"./src/dragonBones/egret/EgretFactory.ts"
 	]
 }

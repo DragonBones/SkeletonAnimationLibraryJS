@@ -22,9 +22,9 @@
  */
 namespace dragonBones {
     /**
-     * @internal
+     * @private
      */
-    export class VerticesData {
+    export class GeometryData {
         public isShared: boolean;
         public inheritDeform: boolean;
         public offset: number;
@@ -43,14 +43,24 @@ namespace dragonBones {
             this.weight = null;
         }
 
-        public shareFrom(value: VerticesData): void {
+        public shareFrom(value: GeometryData): void {
             this.isShared = true;
             this.offset = value.offset;
             this.weight = value.weight;
         }
+
+        public get vertexCount(): number {
+            const intArray = this.data.intArray;
+            return intArray[this.offset + dragonBones.BinaryOffset.GeometryVertexCount];
+        }
+
+        public get triangleCount(): number {
+            const intArray = this.data.intArray;
+            return intArray[this.offset + dragonBones.BinaryOffset.GeometryTriangleCount];
+        }
     }
     /**
-     * @internal
+     * @private
      */
     export abstract class DisplayData extends BaseObject {
         public type: DisplayType;
@@ -67,7 +77,7 @@ namespace dragonBones {
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class ImageDisplayData extends DisplayData {
         public static toString(): string {
@@ -86,7 +96,7 @@ namespace dragonBones {
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class ArmatureDisplayData extends DisplayData {
         public static toString(): string {
@@ -117,26 +127,26 @@ namespace dragonBones {
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class MeshDisplayData extends DisplayData {
         public static toString(): string {
             return "[class dragonBones.MeshDisplayData]";
         }
 
-        public readonly vertices: VerticesData = new VerticesData();
+        public readonly geometry: GeometryData = new GeometryData();
         public texture: TextureData | null;
 
         protected _onClear(): void {
             super._onClear();
 
             this.type = DisplayType.Mesh;
-            this.vertices.clear();
+            this.geometry.clear();
             this.texture = null;
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class BoundingBoxDisplayData extends DisplayData {
         public static toString(): string {
@@ -157,7 +167,7 @@ namespace dragonBones {
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class PathDisplayData extends DisplayData {
         public static toString(): string {
@@ -165,7 +175,7 @@ namespace dragonBones {
         }
         public closed: boolean;
         public constantSpeed: boolean;
-        public readonly vertices: VerticesData = new VerticesData();
+        public readonly geometry: GeometryData = new GeometryData();
         public readonly curveLengths: Array<number> = [];
 
         protected _onClear(): void {
@@ -174,12 +184,12 @@ namespace dragonBones {
             this.type = DisplayType.Path;
             this.closed = false;
             this.constantSpeed = false;
-            this.vertices.clear();
+            this.geometry.clear();
             this.curveLengths.length = 0;
         }
     }
     /**
-     * @internal
+     * @private
      */
     export class WeightData extends BaseObject {
         public static toString(): string {

@@ -79,10 +79,6 @@ namespace dragonBones {
         /**
          * @internal
          */
-        public readonly _blendState: BlendState = new BlendState();
-        /**
-         * @internal
-         */
         public _boneData: BoneData;
         /**
          * @private
@@ -105,12 +101,11 @@ namespace dragonBones {
             this._hasConstraint = false;
             this._visible = true;
             this._cachedFrameIndex = -1;
-            this._blendState.clear();
             this._boneData = null as any; //
             this._parent = null as any; //
             this._cachedFrameIndices = null;
         }
-        
+
         protected _updateGlobalTransformMatrix(isCache: boolean): void {
             // For typescript.
             const boneData = this._boneData;
@@ -130,14 +125,30 @@ namespace dragonBones {
                 if (origin !== null) {
                     // global.copyFrom(this.origin).add(this.offset).add(this.animationPose);
                     global.x = origin.x + offset.x + animationPose.x;
-                    global.y = origin.y + offset.y + animationPose.y;
-                    global.skew = origin.skew + offset.skew + animationPose.skew;
-                    global.rotation = origin.rotation + offset.rotation + animationPose.rotation;
                     global.scaleX = origin.scaleX * offset.scaleX * animationPose.scaleX;
                     global.scaleY = origin.scaleY * offset.scaleY * animationPose.scaleY;
+
+                    if (DragonBones.yDown) {
+                        global.y = origin.y + offset.y + animationPose.y;
+                        global.skew = origin.skew + offset.skew + animationPose.skew;
+                        global.rotation = origin.rotation + offset.rotation + animationPose.rotation;
+                    }
+                    else {
+                        global.y = origin.y - offset.y + animationPose.y;
+                        global.skew = origin.skew - offset.skew + animationPose.skew;
+                        global.rotation = origin.rotation - offset.rotation + animationPose.rotation;
+                    }
                 }
                 else {
-                    global.copyFrom(offset).add(animationPose);
+                    global.copyFrom(offset);
+
+                    if (!DragonBones.yDown) {
+                        global.y = -global.y;
+                        global.skew = -global.skew;
+                        global.rotation = -global.rotation;
+                    }
+
+                    global.add(animationPose);
                 }
             }
             else if (this.offsetMode === OffsetMode.None) {
@@ -151,48 +162,78 @@ namespace dragonBones {
             else {
                 inherit = false;
                 global.copyFrom(offset);
+
+                if (!DragonBones.yDown) {
+                    global.y = -global.y;
+                    global.skew = -global.skew;
+                    global.rotation = -global.rotation;
+                }
             }
 
             if (inherit) {
-                const parentMatrix = parent._boneData.type === BoneType.Bone ? parent.globalTransformMatrix : (parent as Surface)._getGlobalTransformMatrix(global.x, global.y);
+                const isSurface = parent._boneData.type === BoneType.Surface;
+                const surfaceBone = isSurface ? (parent as Surface)._bone : null;
+                const parentMatrix = isSurface ? (parent as Surface)._getGlobalTransformMatrix(global.x, global.y) : parent.globalTransformMatrix;
 
-                if (boneData.inheritScale) {
-                    if (!boneData.inheritRotation) {
-                        parent.updateGlobalTransform();
+                if (boneData.inheritScale && (!isSurface || surfaceBone !== null)) {
+                    if (isSurface) {
+                        if (boneData.inheritRotation) {
+                            global.rotation += parent.global.rotation;
+                        }
 
-                        if (flipX && flipY) {
-                            rotation = global.rotation - (parent.global.rotation + Math.PI);
-                        }
-                        else if (flipX) {
-                            rotation = global.rotation + parent.global.rotation + Math.PI;
-                        }
-                        else if (flipY) {
-                            rotation = global.rotation + parent.global.rotation;
+                        (surfaceBone as Bone).updateGlobalTransform();
+                        global.scaleX *= (surfaceBone as Bone).global.scaleX;
+                        global.scaleY *= (surfaceBone as Bone).global.scaleY;
+                        parentMatrix.transformPoint(global.x, global.y, global);
+                        global.toMatrix(globalTransformMatrix);
+
+                        if (boneData.inheritTranslation) {
+                            global.x = globalTransformMatrix.tx;
+                            global.y = globalTransformMatrix.ty;
                         }
                         else {
-                            rotation = global.rotation - parent.global.rotation;
+                            globalTransformMatrix.tx = global.x;
+                            globalTransformMatrix.ty = global.y;
+                        }
+                    }
+                    else {
+                        if (!boneData.inheritRotation) {
+                            parent.updateGlobalTransform();
+
+                            if (flipX && flipY) {
+                                rotation = global.rotation - (parent.global.rotation + Math.PI);
+                            }
+                            else if (flipX) {
+                                rotation = global.rotation + parent.global.rotation + Math.PI;
+                            }
+                            else if (flipY) {
+                                rotation = global.rotation + parent.global.rotation;
+                            }
+                            else {
+                                rotation = global.rotation - parent.global.rotation;
+                            }
+
+                            global.rotation = rotation;
                         }
 
-                        global.rotation = rotation;
-                    }
+                        global.toMatrix(globalTransformMatrix);
+                        globalTransformMatrix.concat(parentMatrix);
 
-                    global.toMatrix(globalTransformMatrix);
-                    globalTransformMatrix.concat(parentMatrix);
+                        if (boneData.inheritTranslation) {
+                            global.x = globalTransformMatrix.tx;
+                            global.y = globalTransformMatrix.ty;
+                        }
+                        else {
+                            globalTransformMatrix.tx = global.x;
+                            globalTransformMatrix.ty = global.y;
+                        }
 
-                    if (boneData.inheritTranslation) {
-                        global.x = globalTransformMatrix.tx;
-                        global.y = globalTransformMatrix.ty;
-                    }
-                    else {
-                        globalTransformMatrix.tx = global.x;
-                        globalTransformMatrix.ty = global.y;
-                    }
-
-                    if (isCache) {
-                        global.fromMatrix(globalTransformMatrix);
-                    }
-                    else {
-                        this._globalDirty = true;
+                        if (isCache) {
+                            global.fromMatrix(globalTransformMatrix);
+                        }
+                        else {
+                            this._globalDirty = true;
+                        }
                     }
                 }
                 else {
@@ -227,6 +268,10 @@ namespace dragonBones {
 
                             if (flipX !== flipY || boneData.inheritReflection) {
                                 global.skew += Math.PI;
+                            }
+
+                            if (!dragonBones.DragonBones.yDown) {
+                                global.skew = -global.skew;
                             }
                         }
 
@@ -286,6 +331,17 @@ namespace dragonBones {
         /**
          * @internal
          */
+        public _updateAlpha() {
+            if (this._parent !== null) {
+                this._globalAlpha = this._alpha * this._parent._globalAlpha;
+            }
+            else {
+                this._globalAlpha = this._alpha * this._armature._globalAlpha;
+            }
+        }
+        /**
+         * @internal
+         */
         public init(boneData: BoneData, armatureValue: Armature): void {
             if (this._boneData !== null) {
                 return;
@@ -293,6 +349,7 @@ namespace dragonBones {
 
             this._boneData = boneData;
             this._armature = armatureValue;
+            this._alpha = this._boneData.alpha;
 
             if (this._boneData.parent !== null) {
                 this._parent = this._armature.getBone(this._boneData.parent.name);
@@ -306,8 +363,6 @@ namespace dragonBones {
          * @internal
          */
         public update(cacheFrameIndex: number): void {
-            this._blendState.dirty = false;
-
             if (cacheFrameIndex >= 0 && this._cachedFrameIndices !== null) {
                 const cachedFrameIndex = this._cachedFrameIndices[cacheFrameIndex];
                 if (cachedFrameIndex >= 0 && this._cachedFrameIndex === cachedFrameIndex) { // Same cache.
@@ -518,71 +573,6 @@ namespace dragonBones {
          */
         public get parent(): Bone | null {
             return this._parent;
-        }
-
-        /**
-         * - Deprecated, please refer to {@link dragonBones.Armature#getBones()}.
-         * @deprecated
-         * @language en_US
-         */
-        /**
-         * - 已废弃，请参考 {@link dragonBones.Armature#getBones()}。
-         * @deprecated
-         * @language zh_CN
-         */
-        public getBones(): Array<Bone> {
-            console.warn("Deprecated.");
-            const bones = new Array<Bone>();
-
-            for (const bone of this._armature.getBones()) {
-                if (bone.parent === this) {
-                    bones.push(bone);
-                }
-            }
-
-            return bones;
-        }
-        /**
-         * - Deprecated, please refer to {@link dragonBones.Armature#getSlots()}.
-         * @deprecated
-         * @language en_US
-         */
-        /**
-         * - 已废弃，请参考 {@link dragonBones.Armature#getSlots()}。
-         * @deprecated
-         * @language zh_CN
-         */
-        public getSlots(): Array<Slot> {
-            console.warn("Deprecated.");
-            const slots = new Array<Slot>();
-
-            for (const slot of this._armature.getSlots()) {
-                if (slot.parent === this) {
-                    slots.push(slot);
-                }
-            }
-
-            return slots;
-        }
-        /**
-         * - Deprecated, please refer to {@link dragonBones.Armature#getSlot()}.
-         * @deprecated
-         * @language en_US
-         */
-        /**
-         * - 已废弃，请参考 {@link dragonBones.Armature#getSlot()}。
-         * @deprecated
-         * @language zh_CN
-         */
-        public get slot(): Slot | null {
-            console.warn("Deprecated.");
-            for (const slot of this._armature.getSlots()) {
-                if (slot.parent === this) {
-                    return slot;
-                }
-            }
-
-            return null;
         }
     }
 }
